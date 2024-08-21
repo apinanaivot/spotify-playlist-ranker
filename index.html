@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Playlist Ranker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        button, select {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+        }
+        #game, #results, #playlist-select {
+            display: none;
+        }
+        #song-buttons {
+            display: flex;
+            justify-content: space-around;
+        }
+        .song-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 10px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            transition: transform 0.2s;
+            width: 45%;
+        }
+        .song-button:hover {
+            transform: scale(1.05);
+        }
+        .song-button img {
+            width: 100%;
+            height: auto;
+            object-fit: cover;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        #progress-bar {
+            width: 100%;
+            background-color: #ddd;
+            margin-top: 20px;
+        }
+        #progress {
+            width: 0%;
+            height: 30px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+        }
+        .ranked-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            text-align: left;
+        }
+        .ranked-item img {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Spotify Playlist Ranker</h1>
+    <div id="login">
+        <button id="login-button">Login with Spotify</button>
+    </div>
+    <div id="playlist-select">
+        <h2>Select a Playlist to Rank</h2>
+        <select id="playlist-dropdown"></select>
+        <button id="start-ranking">Start Ranking</button>
+    </div>
+    <div id="game">
+        <h2>Which song do you prefer?</h2>
+        <div id="song-buttons">
+            <button id="song1" class="song-button"></button>
+            <button id="song2" class="song-button"></button>
+        </div>
+        <div id="progress-bar">
+            <div id="progress"></div>
+        </div>
+    </div>
+    <div id="results">
+        <h2>Your Ranked Playlist</h2>
+        <div id="ranked-list"></div>
+        <button id="create-playlist">Create Spotify Playlist</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/spotify-web-api-js/1.5.1/spotify-web-api.min.js"></script>
+    <script>
+        const _0x5f4e = [
+            '6dff81ef9d2946b590805eb1021f834e',
+            'http://localhost:8000',
+            'user-read-private user-read-email playlist-read-private playlist-modify-public playlist-modify-private',
+            'https://accounts.spotify.com/authorize',
+            '?response_type=token',
+            '&client_id=',
+            '&scope=',
+            '&redirect_uri='
+        ];
+
+        const _secretKey = atob(_0x5f4e[0]);
+        const _callbackPath = _0x5f4e[1];
+        const _permissionScope = _0x5f4e[2];
+
+        let spotifyApi = new SpotifyWebApi();
+        let tracks = [];
+        let totalComparisons;
+        let completedComparisons = 0;
+
+        document.getElementById('login-button').addEventListener('click', () => {
+            let url = _0x5f4e[3];
+            url += _0x5f4e[4];
+            url += _0x5f4e[5] + encodeURIComponent(_secretKey);
+            url += _0x5f4e[6] + encodeURIComponent(_permissionScope);
+            url += _0x5f4e[7] + encodeURIComponent(_callbackPath);
+            window.location = url;
+});
+
+        function getHashParams() {
+            let hashParams = {};
+            let e, r = /([^&;=]+)=?([^&;]*)/g,
+                q = window.location.hash.substring(1);
+            while ( e = r.exec(q)) {
+                hashParams[e[1]] = decodeURIComponent(e[2]);
+            }
+            return hashParams;
+        }
+
+        window.onload = () => {
+            const params = getHashParams();
+            const access_token = params.access_token;
+            if (access_token) {
+                spotifyApi.setAccessToken(access_token);
+                fetchPlaylists();
+            }
+        };
+
+        function fetchPlaylists() {
+            spotifyApi.getUserPlaylists().then(
+                function(data) {
+                    const dropdown = document.getElementById('playlist-dropdown');
+                    data.items.forEach(playlist => {
+                        const option = document.createElement('option');
+                        option.value = playlist.id;
+                        option.textContent = playlist.name;
+                        dropdown.appendChild(option);
+                    });
+                    document.getElementById('login').style.display = 'none';
+                    document.getElementById('playlist-select').style.display = 'block';
+                },
+                function(err) {
+                    console.error(err);
+                }
+            );
+        }
+
+        document.getElementById('start-ranking').addEventListener('click', () => {
+            const playlistId = document.getElementById('playlist-dropdown').value;
+            fetchPlaylistTracks(playlistId);
+        });
+
+        function fetchPlaylistTracks(playlistId) {
+            spotifyApi.getPlaylistTracks(playlistId).then(
+                function(data) {
+                    tracks = data.items.map(item => item.track);
+                    totalComparisons = Math.ceil(tracks.length * Math.log2(tracks.length));
+                    startGame();
+                },
+                function(err) {
+                    console.error(err);
+                }
+            );
+        }
+
+        function startGame() {
+            document.getElementById('playlist-select').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            nextComparison();
+        }
+
+        function nextComparison() {
+            if (completedComparisons < totalComparisons) {
+                const index1 = Math.floor(Math.random() * tracks.length);
+                let index2 = Math.floor(Math.random() * (tracks.length - 1));
+                if (index2 >= index1) index2++;
+
+                updateSongButton('song1', tracks[index1]);
+                updateSongButton('song2', tracks[index2]);
+                updateProgress();
+            } else {
+                showResults();
+            }
+        }
+
+        function updateSongButton(buttonId, track) {
+            const button = document.getElementById(buttonId);
+            button.innerHTML = `
+                <img src="${track.album.images[0].url}" alt="${track.name} album cover">
+                <div>${track.name}</div>
+                <div>${track.artists[0].name}</div>
+            `;
+            button.onclick = () => chooseSong(track);
+        }
+
+        function updateProgress() {
+            completedComparisons++;
+            const progress = (completedComparisons / totalComparisons) * 100;
+            document.getElementById('progress').style.width = `${progress}%`;
+            document.getElementById('progress').textContent = `${Math.round(progress)}%`;
+        }
+
+        function chooseSong(winner) {
+            winner.wins = (winner.wins || 0) + 1;
+            nextComparison();
+        }
+
+        function showResults() {
+            document.getElementById('game').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            const rankedList = document.getElementById('ranked-list');
+            rankedList.innerHTML = '';
+
+            tracks.sort((a, b) => (b.wins || 0) - (a.wins || 0));
+
+            tracks.forEach((track, index) => {
+                const listItem = document.createElement('div');
+                listItem.className = 'ranked-item';
+                listItem.innerHTML = `
+                    <img src="${track.album.images[0].url}" alt="${track.name} album cover">
+                    <div>
+                        <strong>${index + 1}. ${track.name}</strong><br>
+                        ${track.artists[0].name}
+                    </div>
+                `;
+                rankedList.appendChild(listItem);
+            });
+        }
+
+        document.getElementById('create-playlist').addEventListener('click', createRankedPlaylist);
+
+        function createRankedPlaylist() {
+            spotifyApi.getMe().then(function(data) {
+                const userId = data.id;
+                const playlistName = 'My Ranked Playlist';
+                
+                spotifyApi.createPlaylist(userId, { name: playlistName }).then(function(data) {
+                    const playlistId = data.id;
+                    const trackUris = tracks.map(track => track.uri);
+                    
+                    spotifyApi.addTracksToPlaylist(playlistId, trackUris).then(function(data) {
+                        alert('Ranked playlist created successfully!');
+                    }, function(err) {
+                        console.error('Error adding tracks to playlist:', err);
+                    });
+                }, function(err) {
+                    console.error('Error creating playlist:', err);
+                });
+            }, function(err) {
+                console.error('Error getting user profile:', err);
+            });
+        }
+    </script>
+</body>
+</html>
